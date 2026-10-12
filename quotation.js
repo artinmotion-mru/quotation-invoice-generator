@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const selectedYear = document.getElementById('sheetYear').value; // Get selected year tab
 
       if (!rowIdInput) {
-        alert('Please enter a valid Row ID (e.g. 1, 2, 3...).');
+        showAppModal('Please enter a valid Row ID (e.g. 1, 2, 3...).');
         return;
       }
 
@@ -20,14 +20,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const result = await response.json();
         
         if (result.error) {
-          alert(result.error);
+          showAppModal(result.error);
           return;
         }
 
         const matchedRow = result.find(r => r.rowId === rowIdInput);
 
         if (!matchedRow) {
-          alert(`Row ID ${rowIdInput} not found in the ${selectedYear} sheet.`);
+          showAppModal(`Row ID ${rowIdInput} not found in the ${selectedYear} sheet.`);
           return;
         }
 
@@ -59,11 +59,42 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         renderRows();
-        alert(`Successfully loaded data for Row ID ${rowIdInput} from the ${selectedYear} sheet!`);
+        showAppModal(`Successfully loaded data for Row ID ${rowIdInput} from the ${selectedYear} sheet!`);
 
       } catch (error) {
         console.error('Error fetching from Google Sheets:', error);
-        alert('Failed to connect to Google Sheets. Check console for details.');
+        showAppModal('Failed to connect to Google Sheets. Check console for details.');
+      }
+    });
+  }
+
+  // --- Custom Modal Helper ---
+  function showAppModal(message, title = 'Art In Motion') {
+    const modal = document.getElementById('appModal');
+    const msgEl = document.getElementById('modalMessage');
+    const titleEl = document.getElementById('modalTitle');
+    if (modal && msgEl && titleEl) {
+      titleEl.textContent = title;
+      msgEl.textContent = message;
+      modal.style.display = 'flex';
+    } else {
+      showAppModal(message); // Fallback if modal is missing
+    }
+  }
+
+  // Close modal event listeners
+  const modalCloseBtn = document.getElementById('modalCloseBtn');
+  if (modalCloseBtn) {
+    modalCloseBtn.addEventListener('click', () => {
+      document.getElementById('appModal').style.display = 'none';
+    });
+  }
+
+  const modalOverlay = document.getElementById('appModal');
+  if (modalOverlay) {
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) {
+        modalOverlay.style.display = 'none';
       }
     });
   }
