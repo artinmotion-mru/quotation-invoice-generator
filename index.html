@@ -2,105 +2,126 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Document Generator | Art In Motion</title>
 <link rel="icon" href="assets/aim-logo-white.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="quotation.css" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- Reliable script sources for html2pdf -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
+
+  <!-- Fullscreen Loading Screen Overlay -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="spinner-box">
+      <div class="spinner"></div>
+      <p>Fetching Sheet Data...</p>
+    </div>
+  </div>
+
   <div class="generator-layout">
-  <!-- Controls / Input Form Section (Hidden when downloading PDF) -->
+  <!-- Controls / Input Form Section -->
   <div class="control-panel no-print">
     <div class="control-header">
       <a href="index.html" class="back-link">← Back to Main Site</a>
       <h2>Art In Motion — Document Generator</h2>
-      <p>Configure your document type, performance details, add-ons, and deductions below.</p>
+      <p>Select how you want to create your document below.</p>
     </div>
 
-    <!-- NEW: Google Sheet Row Sync Bar -->
-  <div class="show-card" style="background: #fdf2f4; border: 1px dashed var(--pink-deep); margin-bottom: 20px;">
-  <div style="display: grid; grid-template-columns: 1fr 120px auto; gap: 10px; align-items: center;">
-    <div>
-      <label for="sheetRowId" style="margin-bottom: 4px;">Fetch Row ID</label>
-      <input type="text" id="sheetRowId" placeholder="e.g. 1, 2...">
+    <!-- Mode Selector Options -->
+    <div class="mode-selector">
+      <button type="button" class="mode-btn active" id="modeLoadBtn">
+        <span></span> Load from Google Sheet
+      </button>
+      <button type="button" class="mode-btn" id="modeManualBtn">
+        <span></span> Manual Entry
+      </button>
     </div>
-    <div>
-      <label for="sheetYear" style="margin-bottom: 4px;">Year Tab</label>
-      <select id="sheetYear">
-        <option value="2026" selected>2026</option>
-        <option value="2027">2027</option>
-        <option value="2028">2028</option>
-      </select>
-    </div>
-    <div style="align-self: flex-end;">
-      <button type="button" class="btn btn-dark" id="fetchSheetDataBtn" style="height: 42px; margin-top: 0;">Load Data</button>
-    </div>
-  </div>
-</div>
 
-    <div class="form-grid">
-      <div class="field">
-        <label for="docType">Document Type</label>
-        <select id="docType">
-          <option value="quotation">Quotation</option>
-          <option value="invoice">Invoice</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="clientName">Client Name</label>
-        <input type="text" id="clientName" value="">
-      </div>
-      <div class="field">
-        <label for="clientContact">Contact Number / Email</label>
-        <input type="text" id="clientContact" value="">
-      </div>
-      <div class="field">
-        <label for="quoteNo" id="docNoLabel">Quotation Number</label>
-        <input type="text" id="quoteNo" value="">
-      </div>
-      <div class="field">
-        <label for="quoteDate" id="docDateLabel">Quotation Date</label>
-        <input type="date" id="quoteDate">
-      </div>
-      <div class="field">
-        <label for="quoteStatus">Document Status</label>
-        <select id="quoteStatus">
-          <option value="INQUIRY">Inquiry</option>
-          <option value="PENDING">Pending</option>
-          <option value="CONFIRMED">Confirmed</option>
-          <option value="PAID">Paid</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="advancePayment" id="advanceLabel">Advance Payment / Deduction (MUR)</label>
-        <input type="number" id="advancePayment" value="" min="0" step="100">
+    <!-- Google Sheet Row Sync Bar (Shown in Load mode) -->
+    <div id="syncSection" class="show-card" style="background: #fdf2f4; border: 1px dashed var(--pink-deep); margin-bottom: 20px;">
+      <div style="display: grid; grid-template-columns: 1fr 120px auto; gap: 10px; align-items: flex-end;" class="sync-grid">
+        <div>
+          <label for="sheetRowId" class="small-label">Row No.</label>
+          <input type="text" id="sheetRowId" placeholder="">
+        </div>
+        <div>
+          <label for="sheetYear" class="small-label">Year</label>
+          <select id="sheetYear">
+            <option value="2026" selected>2026</option>
+            <option value="2027">2027</option>
+            <option value="2028">2028</option>
+          </select>
+        </div>
+        <div>
+          <button type="button" class="btn btn-dark" id="fetchSheetDataBtn" style="height: 42px; margin-top: 0; width: 100%;">Load Data</button>
+        </div>
       </div>
     </div>
 
-    <div class="shows-manager">
-      <h3>Performance / Show Entries &amp; Add-ons</h3>
-      <div id="showsInputList"></div>
-      <button type="button" class="btn btn-dark btn-sm" id="addShowRowBtn">+ Add Another Show</button>
-    </div>
+    <!-- Dynamic Form Content Section -->
+    <div id="formContentSection" style="display: none;">
+      <div class="form-grid">
+        <div class="field">
+          <label for="docType">Document Type</label>
+          <select id="docType">
+            <option value="quotation">Quotation</option>
+            <option value="invoice">Invoice</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="clientName">Client Name</label>
+          <input type="text" id="clientName" value="">
+        </div>
+        <div class="field">
+          <label for="clientContact">Contact Number / Email</label>
+          <input type="text" id="clientContact" value="">
+        </div>
+        <div class="field">
+          <label for="quoteNo" id="docNoLabel">Quotation Number</label>
+          <input type="text" id="quoteNo" value="">
+        </div>
+        <div class="field">
+          <label for="quoteDate" id="docDateLabel">Quotation Date</label>
+          <input type="date" id="quoteDate">
+        </div>
+        <div class="field">
+          <label for="quoteStatus">Document Status</label>
+          <select id="quoteStatus">
+            <option value="INQUIRY">Inquiry</option>
+            <option value="PENDING">Pending</option>
+            <option value="CONFIRMED">Confirmed</option>
+            <option value="PAID">Paid</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="advancePayment" id="advanceLabel">Advance Payment / Deduction (MUR)</label>
+          <input type="number" id="advancePayment" value="" min="0" step="100">
+        </div>
+      </div>
 
-    <div class="field" style="margin-top: 20px;">
-      <label for="quoteNote">Terms &amp; Conditions / Payment Instructions</label>
-      <textarea id="quoteNote" rows="5">• All prices quoted herein are inclusive of standard transportation and ancillary expenses.
+      <div class="shows-manager">
+        <h3>Performance / Show Entries &amp; Add-ons</h3>
+        <div id="showsInputList"></div>
+        <button type="button" class="btn btn-dark btn-sm" id="addShowRowBtn">+ Add Another Show</button>
+      </div>
+
+      <div class="field" style="margin-top: 20px;">
+        <label for="quoteNote">Terms &amp; Conditions / Payment Instructions</label>
+        <textarea id="quoteNote" rows="5">• All prices quoted herein are inclusive of standard transportation and ancillary expenses.
 • In the event that catering is not provided on-site, a subsistence allowance of MUR 200 per dancer may be levied by the company.
 • The client agrees to provide a secure, private, and appropriate dressing area for the performers (strictly excluding restroom facilities) along with complimentary drinking water.
 • An advance payment is required to formally secure the booking, and settlement of this deposit constitutes full acceptance of these terms and conditions.
 • Bank: Mauritius Commercial Bank Ltd (MCB) | Account Number: 000451370740 | Juice: 5833 0980.</textarea>
-    </div>
+      </div>
 
-    <div class="action-bar">
-      <button type="button" class="btn btn-primary" id="downloadPdfBtn">📥 Download A4 PDF Quotation</button>
+      <div class="action-bar">
+        <button type="button" class="btn btn-primary" id="downloadPdfBtn">Download</button>
+      </div>
     </div>
   </div>
 
@@ -124,7 +145,7 @@
 
           <div class="inv-meta">
             <h2 id="valDocTitle">Quotation</h2>
-            <div><span id="valRefLabel">Ref No:</span> <span class="val-quoteNo">AIM-Q-2026-001</span></div>
+            <div><span id="valRefLabel">Ref No:</span> <span class="val-quoteNo">AIM-Q-001</span></div>
             <div><span id="valDateLabel">Date:</span> <span class="val-quoteDate">—</span></div>
             <div class="status-badge-container">
               <span>Status:</span> <span id="valStatusBadge" class="status-pill inquiry">INQUIRY</span>
@@ -209,14 +230,8 @@
   </div>
   </div>
 
-  <!-- Custom App Modal Popup -->
-<div id="appModal" class="modal-overlay" style="display: none;">
-  <div class="modal-card">
-    <h3 id="modalTitle">Notice</h3>
-    <p id="modalMessage">Message content goes here...</p>
-    <button type="button" class="btn btn-primary" id="modalCloseBtn" style="margin-top: 5px; width: auto; padding: 10px 28px;">OK</button>
-  </div>
-</div>
+  <!-- Top Toast Notification Popup -->
+  <div id="toastNotification" class="toast-notification"></div>
 
 <script src="quotation.js"></script>
 </body>
