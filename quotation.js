@@ -1,37 +1,65 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-// --- Google Sheets Sync Logic ---
   const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxAEBF8TMG6Q-j1vMGjcwgYZnHO7y-b4IkkJh1VIS-rs_Qdf0YdqdYVnCEqk9o7Ne20/exec';
 
+  const modeLoadBtn = document.getElementById('modeLoadBtn');
+  const modeManualBtn = document.getElementById('modeManualBtn');
+  const syncSection = document.getElementById('syncSection');
+  const formContentSection = document.getElementById('formContentSection');
+  const loadingOverlay = document.getElementById('loadingOverlay');
+
+  // --- Mode Selection Switcher ---
+  if (modeLoadBtn && modeManualBtn) {
+    modeLoadBtn.addEventListener('click', () => {
+      modeLoadBtn.classList.add('active');
+      modeManualBtn.classList.remove('active');
+      syncSection.style.display = 'block';
+      formContentSection.style.display = 'none';
+    });
+
+    modeManualBtn.addEventListener('click', () => {
+      modeManualBtn.classList.add('active');
+      modeLoadBtn.classList.remove('active');
+      syncSection.style.display = 'none';
+      formContentSection.style.display = 'block';
+
+      if (sampleShows.length === 0) {
+        sampleShows.push({ date: '', venue: '', pkg: '', price: 0, addons: [] });
+        renderRows();
+      }
+    });
+  }
+
+  // --- Google Sheets Sync Logic with Screen Lock & Loading ---
   const fetchBtn = document.getElementById('fetchSheetDataBtn');
   if (fetchBtn) {
     fetchBtn.addEventListener('click', async () => {
       const rowIdInput = document.getElementById('sheetRowId').value.trim();
-      const selectedYear = document.getElementById('sheetYear').value; // Get selected year tab
+      const selectedYear = document.getElementById('sheetYear').value;
 
       if (!rowIdInput) {
-        showAppModal('Please enter a valid Row ID (e.g. 1, 2, 3...).');
+        showToast('Enter a valid Row Number');
         return;
       }
 
+      loadingOverlay.classList.add('active');
+
       try {
-        // Pass the year as a parameter to the script URL
         const response = await fetch(`${WEB_APP_URL}?year=${selectedYear}`);
         const result = await response.json();
         
         if (result.error) {
-          showAppModal(result.error);
+          showToast(result.error);
           return;
         }
 
         const matchedRow = result.find(r => r.rowId === rowIdInput);
 
         if (!matchedRow) {
-          showAppModal(`Row ID ${rowIdInput} not found in the ${selectedYear} sheet.`);
+          showToast(`Row ID ${rowIdInput} not found in the ${selectedYear} sheet.`);
           return;
         }
 
-        // 1. Populate basic client & document fields
         if (matchedRow.client) {
           document.getElementById('clientName').value = matchedRow.client;
         }
@@ -39,16 +67,19 @@ document.addEventListener('DOMContentLoaded', () => {
           document.getElementById('clientContact').value = formatMauritianPhone(matchedRow.contact_number);
         }
 
+        const recordId = matchedRow.id || matchedRow.rowId || '001';
+        const docType = document.getElementById('docType').value;
+        const prefix = docType === 'invoice' ? 'AIM-INV-' : 'AIM-Q-';
+        document.getElementById('quoteNo').value = `${prefix}${recordId}`;
+
         const downpayment = parseFloat(matchedRow['amount_paid_/_downpayment']) || 0;
         document.getElementById('advancePayment').value = downpayment;
 
-        // 2. Format performance date from sheet
-        let showDate = new Date().toISOString().split('T')[0];
+        let showDate = getMauritiusCurrentDate();
         if (matchedRow.date) {
           showDate = matchedRow.date.split('T')[0];
         }
 
-        // 3. Populate the Show / Performance details table
         sampleShows.length = 0;
         sampleShows.push({
           date: showDate,
@@ -59,54 +90,72 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         renderRows();
-        showAppModal(`Successfully loaded data for Row ID ${rowIdInput} from the ${selectedYear} sheet!`);
+
+        formContentSection.style.display = 'block';
+        showToast('Data successfully retrieved');
 
       } catch (error) {
         console.error('Error fetching from Google Sheets:', error);
-        showAppModal('Failed to connect to Google Sheets. Check console for details.');
+        showToast('Failed to connect to Google Sheets.');
+      } finally {
+        loadingOverlay.classList.remove('active');
       }
     });
   }
 
-  // --- Custom Modal Helper ---
-  function showAppModal(message, title = 'Art In Motion') {
-    const modal = document.getElementById('appModal');
-    const msgEl = document.getElementById('modalMessage');
-    const titleEl = document.getElementById('modalTitle');
-    if (modal && msgEl && titleEl) {
-      titleEl.textContent = title;
-      msgEl.textContent = message;
-      modal.style.display = 'flex';
-    } else {
-      showAppModal(message); // Fallback if modal is missing
+  // --- Top Toast Notification Helper ---
+  let toastTimer = null;
+  function showToast(message) {
+    const toast = document.getElementById('toastNotification');
+    if (toast) {
+      toast.textContent = message;
+      toast.classList.add('show');
+      
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3500);
     }
   }
 
-  // Close modal event listeners
-  const modalCloseBtn = document.getElementById('modalCloseBtn');
-  if (modalCloseBtn) {
-    modalCloseBtn.addEventListener('click', () => {
-      document.getElementById('appModal').style.display = 'none';
-    });
+  // --- Auto-fit A4 Preview Scaler for Mobile & Desktop Viewports ---
+  function fitA4Preview() {
+    const wrapper = document.querySelector('.invoice-wrapper');
+    const sheet = document.getElementById('quotationDocument');
+    if (!wrapper || !sheet) return;
+
+    const naturalWidth = 794;
+    const availableWidth = wrapper.clientWidth;
+
+    if (availableWidth < naturalWidth) {
+      const scale = availableWidth / naturalWidth;
+      sheet.style.transform = `scale(${scale})`;
+      wrapper.style.height = `${sheet.offsetHeight * scale}px`;
+    } else {
+      sheet.style.transform = 'scale(1)';
+      wrapper.style.height = 'auto';
+    }
   }
 
-  const modalOverlay = document.getElementById('appModal');
-  if (modalOverlay) {
-    modalOverlay.addEventListener('click', (e) => {
-      if (e.target === modalOverlay) {
-        modalOverlay.style.display = 'none';
-      }
-    });
+  window.addEventListener('resize', fitA4Preview);
+
+  // Helper to get current date in Mauritius timezone (YYYY-MM-DD)
+  function getMauritiusCurrentDate() {
+    try {
+      const options = { timeZone: 'Indian/Mauritius', year: 'numeric', month: '2-digit', day: '2-digit' };
+      const formatter = new Intl.DateTimeFormat('en-CA', options); // en-CA gives YYYY-MM-DD format natively
+      return formatter.format(new Date());
+    } catch (e) {
+      return new Date().toISOString().split('T')[0];
+    }
   }
 
-  // Set default quotation date to today if empty
   const dateInput = document.getElementById('quoteDate');
   if (dateInput && !dateInput.value) {
-    dateInput.valueAsDate = new Date();
+    dateInput.value = getMauritiusCurrentDate();
   }
 
   const showsContainer = document.getElementById('showsInputList');
-  
   const sampleShows = [];
 
   function formatDateToDDMMYYYY(dateString) {
@@ -119,22 +168,17 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function formatMauritianPhone(phone) {
-  if (!phone) return '';
-  // Remove all non-numeric characters (e.g., spaces, plus signs, dashes)
-  const cleaned = phone.toString().replace(/\D/g, '');
-  
-  // If it's an 8-digit Mauritian number (e.g., 58273172), format as 5 827 3172
-  if (cleaned.length === 8) {
-    return `${cleaned.slice(0, 1)} ${cleaned.slice(1, 4)} ${cleaned.slice(4)}`;
+    if (!phone) return '';
+    const cleaned = phone.toString().replace(/\D/g, '');
+    
+    if (cleaned.length === 8) {
+      return `${cleaned.slice(0, 1)} ${cleaned.slice(1, 4)} ${cleaned.slice(4)}`;
+    }
+    if (cleaned.length === 11 && cleaned.startsWith('230')) {
+      return `+230 ${cleaned.slice(3, 4)} ${cleaned.slice(4, 7)} ${cleaned.slice(7)}`;
+    }
+    return phone;
   }
-  // If it includes the country code +230 followed by 8 digits (total 11 digits), format nicely
-  if (cleaned.length === 11 && cleaned.startsWith('230')) {
-    return `+230 ${cleaned.slice(3, 4)} ${cleaned.slice(4, 7)} ${cleaned.slice(7)}`;
-  }
-  
-  // Fallback to original string if it doesn't match standard lengths
-  return phone;
-}
 
   function renderRows() {
     showsContainer.innerHTML = '';
@@ -146,20 +190,42 @@ document.addEventListener('DOMContentLoaded', () => {
       show.addons.forEach((addon) => {
         addonsHtml += `
           <div class="addon-row">
-            <input type="text" class="a-name" placeholder="Add-on item (e.g. Extra rehearsal)" value="${addon.name}" required>
-            <input type="number" class="a-price" placeholder="Price (MUR)" value="${addon.price}" required>
-            <button type="button" class="remove-row-btn remove-addon-btn" title="Remove add-on">✕</button>
+            <div>
+              <label class="small-label">Add-on Item</label>
+              <input type="text" class="a-name" placeholder="Add-on item (e.g. Extra rehearsal)" value="${addon.name}" required>
+            </div>
+            <div>
+              <label class="small-label">Price (MUR)</label>
+              <input type="number" class="a-price" placeholder="Price" value="${addon.price}" required>
+            </div>
+            <div>
+              <button type="button" class="remove-row-btn remove-addon-btn" title="Remove add-on">✕</button>
+            </div>
           </div>
         `;
       });
 
       showCard.innerHTML = `
         <div class="show-main-inputs">
-          <input type="date" class="s-date" value="${show.date}" required>
-          <input type="text" class="s-venue" placeholder="Venue name" value="${show.venue}" required>
-          <input type="text" class="s-pkg" placeholder="Package / Style" value="${show.pkg}" required>
-          <input type="number" class="s-price" placeholder="Price (MUR)" value="${show.price}" required>
-          <button type="button" class="remove-row-btn remove-show-btn" title="Remove show">✕</button>
+          <div>
+            <label class="small-label">Show Date</label>
+            <input type="date" class="s-date" value="${show.date}" required>
+          </div>
+          <div>
+            <label class="small-label">Location / Venue</label>
+            <input type="text" class="s-venue" placeholder="Venue name" value="${show.venue}" required>
+          </div>
+          <div>
+            <label class="small-label">Event Type / Package</label>
+            <input type="text" class="s-pkg" placeholder="Package / Style" value="${show.pkg}" required>
+          </div>
+          <div>
+            <label class="small-label">Price (MUR)</label>
+            <input type="number" class="s-price" placeholder="Price" value="${show.price}" required>
+          </div>
+          <div>
+            <button type="button" class="remove-row-btn remove-show-btn" title="Remove show">✕</button>
+          </div>
         </div>
         <div class="addons-container">
           <div style="margin-bottom: 6px;"><button type="button" class="btn-sm-addon add-addon-btn">+ Add Optional Add-on</button></div>
@@ -167,21 +233,18 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       `;
       
-      // Delete show event
       showCard.querySelector('.remove-show-btn').addEventListener('click', () => {
         sampleShows.splice(showIndex, 1);
         renderRows();
         updateQuotationPreview();
       });
 
-      // Add add-on event
       showCard.querySelector('.add-addon-btn').addEventListener('click', () => {
         show.addons.push({ name: '', price: 0 });
         renderRows();
         updateQuotationPreview();
       });
 
-      // Remove add-on event listeners
       showCard.querySelectorAll('.remove-addon-btn').forEach((btn, addonIndex) => {
         btn.addEventListener('click', () => {
           show.addons.splice(addonIndex, 1);
@@ -190,7 +253,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       });
 
-      // Main show input listeners
       showCard.querySelectorAll('.show-main-inputs input').forEach(input => {
         input.addEventListener('input', (e) => {
           const fieldType = e.target.className.replace('s-', '');
@@ -199,7 +261,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       });
 
-      // Add-on input listeners
       showCard.querySelectorAll('.addon-list-inputs .addon-row').forEach((row, addonIndex) => {
         const nameInput = row.querySelector('.a-name');
         const priceInput = row.querySelector('.a-price');
@@ -228,13 +289,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const docType = document.getElementById('docType').value;
     const isInvoice = docType === 'invoice';
 
-    // Dynamically update form labels and buttons based on type
     document.getElementById('docNoLabel').textContent = isInvoice ? 'Invoice Number' : 'Quotation Number';
     document.getElementById('docDateLabel').textContent = isInvoice ? 'Invoice Date' : 'Quotation Date';
     document.getElementById('advanceLabel').textContent = isInvoice ? 'Advance Paid / Deposit Deducted (MUR)' : 'Advance Payment / Deduction (MUR)';
-    document.getElementById('downloadPdfBtn').textContent = isInvoice ? '📥 Download A4 PDF Invoice' : '📥 Download A4 PDF Quotation';
+    document.getElementById('downloadPdfBtn').textContent = isInvoice ? 'Download' : 'Download';
 
-    // Dynamically update sheet headers and labels
     document.getElementById('valDocTitle').textContent = isInvoice ? 'Invoice' : 'Quotation';
     document.getElementById('valRefLabel').textContent = isInvoice ? 'Invoice No:' : 'Ref No:';
     document.getElementById('valDateLabel').textContent = isInvoice ? 'Invoice Date:' : 'Date:';
@@ -243,7 +302,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('valBalanceLabel').textContent = isInvoice ? 'Total' : 'Total';
     document.getElementById('valNotesTitle').textContent = isInvoice ? 'Payment Terms & Instructions' : 'Terms & Conditions';
 
-    // Auto-swap default text in the textarea if it hasn't been heavily customized yet
     const quoteNoteTextarea = document.getElementById('quoteNote');
     if (isInvoice && quoteNoteTextarea.value.includes('All prices quoted herein')) {
       quoteNoteTextarea.value = `• All prices mentioned herein are inclusive of standard transportation and ancillary expenses.
@@ -259,23 +317,29 @@ document.addEventListener('DOMContentLoaded', () => {
 • Bank: Mauritius Commercial Bank Ltd (MCB) | Account Number: 000451370740 | Juice: 5833 0980.`;
     }
 
-    // Default reference prefix swap convenience check
     const quoteNoInput = document.getElementById('quoteNo');
-    if (isInvoice && quoteNoInput.value.startsWith('AIM-Q-')) {
-      quoteNoInput.value = quoteNoInput.value.replace('AIM-Q-', 'AIM-INV-');
-    } else if (!isInvoice && quoteNoInput.value.startsWith('AIM-INV-')) {
-      quoteNoInput.value = quoteNoInput.value.replace('AIM-INV-', 'AIM-Q-');
+    let currentVal = quoteNoInput.value.trim();
+    
+    let idMatch = currentVal.match(/(?:AIM-Q-|AIM-INV-)?(.+)/);
+    let recordId = idMatch ? idMatch[1] : '001';
+    
+    if (isInvoice) {
+      if (!currentVal.startsWith('AIM-INV-')) {
+        quoteNoInput.value = `AIM-INV-${recordId.replace('AIM-Q-', '')}`;
+      }
+    } else {
+      if (!currentVal.startsWith('AIM-Q-')) {
+        quoteNoInput.value = `AIM-Q-${recordId.replace('AIM-INV-', '')}`;
+      }
     }
 
-    // Dynamic text bindings
     document.querySelector('.val-clientName').textContent = document.getElementById('clientName').value || '—';
     document.querySelector('.val-clientContact').textContent = document.getElementById('clientContact').value || '—';
-    document.querySelector('.val-quoteNo').textContent = quoteNoInput.value || (isInvoice ? 'AIM-INV-2026-001' : 'AIM-Q-2026-001');
+    document.querySelector('.val-quoteNo').textContent = quoteNoInput.value || (isInvoice ? 'AIM-INV-001' : 'AIM-Q-001');
     
     const selectedDate = document.getElementById('quoteDate').value;
     document.querySelector('.val-quoteDate').textContent = formatDateToDDMMYYYY(selectedDate);
     
-    // Update terms and conditions stacked paragraphs
     const quoteNoteEl = document.getElementById('valQuoteNote');
     if (quoteNoteEl) {
       const rawText = document.getElementById('quoteNote').value || '';
@@ -289,13 +353,11 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Status badge update
     const statusVal = document.getElementById('quoteStatus').value;
     const badgeEl = document.getElementById('valStatusBadge');
     badgeEl.textContent = statusVal;
     badgeEl.className = `status-pill ${statusVal.toLowerCase()}`;
 
-    // Render dynamic table rows & sub-rows inside the A4 sheet
     const tableBody = document.getElementById('invoiceTableBody');
     tableBody.innerHTML = '';
     
@@ -304,7 +366,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const priceNum = parseFloat(s.price) || 0;
       subtotal += priceNum;
 
-      // Main Show Row
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td style="text-align: center;"><b>${idx + 1}</b></td>
@@ -315,7 +376,6 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
       tableBody.appendChild(tr);
 
-      // Add-on Sub-rows
       if (s.addons && s.addons.length > 0) {
         s.addons.forEach(addon => {
           const addonPriceNum = parseFloat(addon.price) || 0;
@@ -334,7 +394,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Advance Payment / Deduction Calculation
     const advanceInput = parseFloat(document.getElementById('advancePayment').value) || 0;
     const finalBalance = Math.max(0, subtotal - advanceInput);
 
@@ -343,7 +402,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const deductionRow = document.getElementById('deductionRow');
     const isPaid = statusVal === 'PAID';
 
-    // If status is PAID, we hide deductions/advances since everything is fully settled
     if (advanceInput > 0 && !isPaid) {
       deductionRow.style.display = 'flex';
       document.getElementById('valDeductionAmount').textContent = `- MUR ${advanceInput.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -351,18 +409,17 @@ document.addEventListener('DOMContentLoaded', () => {
       deductionRow.style.display = 'none';
     }
 
-    // Adjust wording and final value based on whether it is fully paid
     if (isPaid) {
       document.getElementById('valBalanceLabel').textContent = 'Total Paid';
-      // If paid, show the full subtotal (or subtotal minus advance if preferred, but usually full total when paid in full)
       document.getElementById('valTotalAmount').textContent = `MUR ${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     } else {
       document.getElementById('valBalanceLabel').textContent = isInvoice ? 'Total' : 'Total';
       document.getElementById('valTotalAmount').textContent = `MUR ${finalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
+
+    setTimeout(fitA4Preview, 50);
   }
 
-  // Bind live listeners to all form controls including docType
   ['docType', 'clientName', 'clientContact', 'quoteNo', 'quoteDate', 'quoteStatus', 'quoteNote', 'advancePayment'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
@@ -371,10 +428,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // --- Automated Direct PDF Download ---
   document.getElementById('downloadPdfBtn').addEventListener('click', () => {
-    window.print();
+    const element = document.getElementById('quotationDocument');
+    const docType = document.getElementById('docType').value;
+    const refNo = document.getElementById('quoteNo').value.trim() || (docType === 'invoice' ? 'AIM-INV-001' : 'AIM-Q-001');
+    const filename = `${refNo}.pdf`;
+
+    element.classList.add('is-exporting');
+
+    const opt = {
+      margin:       0,
+      filename:     filename,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true, letterRendering: true, scrollX: 0, scrollY: 0 },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak:    { mode: ['avoid-all', 'css'] }
+    };
+
+    html2pdf().from(element).set(opt).save().then(() => {
+      element.classList.remove('is-exporting');
+      fitA4Preview();
+      showToast('PDF downloaded successfully');
+    }).catch(err => {
+      console.error('PDF Export Error:', err);
+      element.classList.remove('is-exporting');
+      fitA4Preview();
+      showToast('Failed to generate PDF. Please try again.');
+    });
   });
 
-  // Initial render on page load
-  renderRows();
+  fitA4Preview();
 });
